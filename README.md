@@ -147,7 +147,7 @@ Each VGA cell is two bytes: ASCII character + color attribute (low nibble = fore
 
 ## UI Overview
 
-- **ORG (Origin):** Used as the load address when the source has no `ORG` directive
+- **ORG (Origin):** Used as the load address when the source has no `ORG` directive. An `ORG` in the source (including the bracketed `[ORG ...]` form, with or without a trailing comment) always takes precedence.
 - **Keep RAM:** Preserves memory contents across Reset/Assemble cycles
 - **Memory viewer:** Shows 8 rows × 16 bytes at any segment:offset; bytes are editable; a second viewer can be toggled on
 - **Load button:** Loads a binary file into memory at the current segment:offset

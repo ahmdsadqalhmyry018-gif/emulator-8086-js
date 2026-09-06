@@ -1135,22 +1135,13 @@ export default function Emulator8086() {
     const assemble = () => {
         try {
             setErrorMessage(null);
-            let startIP = parseInt(orgOffset.replace(/0x/i, ''), 16) || 0;
-            const hasOrg = /^\s*\.?org\b/im.test(code);
-            const sourceCode = hasOrg ? code : `ORG ${startIP}\n${code}`;
-            // Extract the actual ORG value from source so we load at the right address
-            if (hasOrg) {
-                const orgMatch = code.match(/^\s*\.?org\s+([0-9a-fA-Fx]+h?)\s*$/im);
-                if (orgMatch) {
-                    let v = orgMatch[1].trim();
-                    if (/h$/i.test(v)) startIP = parseInt(v.slice(0, -1), 16);
-                    else if (/^0x/i.test(v)) startIP = parseInt(v, 16);
-                    else startIP = parseInt(v, 10);
-                    if (isNaN(startIP)) startIP = 0;
-                }
-            }
+            // The ORG field is only a fallback: any ORG in the source wins, and the
+            // assembler reports the address it actually built for. Never re-derive
+            // the load address by re-parsing the source text here.
+            const fallbackOrg = parseInt(orgOffset.replace(/0x/i, ''), 16) || 0;
             const assembler = new Assembler8086();
-            const binary = assembler.assemble(sourceCode);
+            const binary = assembler.assemble(code, { origin: fallbackOrg });
+            const startIP = assembler.origin;
             resetCPU();
             const e = eng.current;
             for (let i = 0; i < binary.length; i++) {

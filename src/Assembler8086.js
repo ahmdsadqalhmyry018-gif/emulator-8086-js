@@ -308,14 +308,29 @@ class Assembler8086 {
         this.defines = new Map();
         this.currentGlobalLabel = '';
         this.sectionBase = 0;
+        this.origin = 0;
     }
 
-    assemble(sourceCode) {
+    /**
+     * Assemble source text to machine code.
+     *
+     * After a successful call, `this.origin` holds the address the first emitted
+     * byte belongs at: the ORG in effect when output started, or `options.origin`
+     * when the source declares no ORG. Callers must load the binary there rather
+     * than re-deriving the address from the source text.
+     *
+     * @param {string} sourceCode
+     * @param {{origin?: number}} [options] - origin: load address used when the source has no ORG
+     * @returns {Uint8Array}
+     */
+    assemble(sourceCode, options = {}) {
+        const defaultOrigin = options.origin ?? 0;
         this.symbolTable.clear();
         this.lines = [];
         this.defines = new Map();
         this.currentGlobalLabel = '';
-        this.sectionBase = 0;
+        this.sectionBase = defaultOrigin;
+        this.origin = defaultOrigin;
 
         // Preprocessor pass: handle %define
         const preprocessed = this.preprocess(sourceCode);
@@ -325,8 +340,9 @@ class Assembler8086 {
             this.symbolTable.clear();
             this.lines = [];
             this.currentGlobalLabel = '';
-            this.sectionBase = 0;
-            this.pass1(preprocessed);
+            this.sectionBase = defaultOrigin;
+            this.origin = defaultOrigin;
+            this.pass1(preprocessed, defaultOrigin);
             
             try {
                 return this.pass2();
@@ -394,13 +410,29 @@ class Assembler8086 {
         return outputLines.join('\n');
     }
 
-    pass1(sourceCode) {
+    pass1(sourceCode, defaultOrigin = 0) {
         const rawLines = sourceCode.split('\n');
-        let currentAddress = 0;
+        let currentAddress = defaultOrigin;
 
         for (let i = 0; i < rawLines.length; i++) {
             let cleaned = rawLines[i].trim();
             if (!cleaned || cleaned.startsWith(';')) continue;
+
+            // Strip comments (respecting quotes) first, so a trailing comment
+            // cannot hide the closing bracket of "[ORG 0x7C00] ; note".
+            let inStr = false;
+            let commentIdx = -1;
+            let quoteChar = '';
+            for (let j = 0; j < cleaned.length; j++) {
+                const char = cleaned[j];
+                if (char === "'" || char === '"') {
+                    if (!inStr) { inStr = true; quoteChar = char; }
+                    else if (char === quoteChar) { inStr = false; }
+                }
+                if (char === ';' && !inStr) { commentIdx = j; break; }
+            }
+            if (commentIdx !== -1) cleaned = cleaned.substring(0, commentIdx).trim();
+            if (!cleaned) continue;
 
             // Handle bracketed directives: [ORG ...], [BITS 16], etc.
             if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
@@ -415,21 +447,6 @@ class Assembler8086 {
                     continue; // Ignore other bracketed directives
                 }
             }
-            
-            // Strip comments (respecting quotes)
-            let inStr = false;
-            let commentIdx = -1;
-            let quoteChar = '';
-            for (let j = 0; j < cleaned.length; j++) {
-                const char = cleaned[j];
-                if (char === "'" || char === '"') {
-                    if (!inStr) { inStr = true; quoteChar = char; }
-                    else if (char === quoteChar) { inStr = false; }
-                }
-                if (char === ';' && !inStr) { commentIdx = j; break; }
-            }
-            if (commentIdx !== -1) cleaned = cleaned.substring(0, commentIdx).trim();
-            if (!cleaned) continue;
 
             // Parse label (with colon)
             let label = null;
@@ -484,6 +501,8 @@ class Assembler8086 {
                 if (isNaN(newOrg)) throw new Error(`[Line ${i+1}] Invalid ORG operand: ${rest}`);
                 currentAddress = newOrg;
                 this.sectionBase = newOrg;
+                // An ORG seen before any output is emitted sets the load address.
+                if (this.lines.length === 0) this.origin = newOrg;
                 continue;
             }
 

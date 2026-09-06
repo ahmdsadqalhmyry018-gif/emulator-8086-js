@@ -45,11 +45,13 @@ The old AST interpreter has been removed. All execution goes through the binary 
 
 1. User writes NASM-compatible x86 assembly in the `CodeEditor`
 2. Clicking **Assemble** calls `assemble()` in `App.jsx`, which:
-   - Detects any `ORG` directive in the source to determine the load address
-   - Falls back to the **ORG (Origin)** input field value if no `ORG` directive is present
-   - Calls `new Assembler8086().assemble(sourceCode)` → returns a `Uint8Array`
-   - Loads the binary into `eng.current.mem` at the correct address
-   - Sets `CS = 0x0000`, `IP = loadAddress`
+   - Reads the **ORG (Origin)** input field as a *fallback* load address
+   - Calls `assembler.assemble(code, { origin: fallbackOrg })` → returns a `Uint8Array`
+   - Reads the real load address back from `assembler.origin` — any `ORG` in the
+     source wins over the field. The load address is **never** re-derived by
+     regex-matching the source text; the assembler is the single source of truth.
+   - Loads the binary into `eng.current.mem` at `assembler.origin`
+   - Sets `CS = 0x0000`, `IP = assembler.origin`
 3. The user can then **Run** or **Step** through the binary decoder
 
 ### Key Functions in App.jsx
@@ -72,8 +74,14 @@ The old AST interpreter has been removed. All execution goes through the binary 
 A two-pass NASM-compatible assembler exported as `export { Assembler8086 }`.
 
 ```js
-const binary = new Assembler8086().assemble(sourceCode); // returns Uint8Array
+const assembler = new Assembler8086();
+const binary = assembler.assemble(sourceCode);              // Uint8Array
+const binary2 = assembler.assemble(src, { origin: 0x100 }); // origin = fallback when src has no ORG
+assembler.origin; // address the emitted bytes belong at — load them here
 ```
+
+`origin` is the `ORG` in effect when the first byte was emitted, or `options.origin`
+when the source declares no `ORG`. Read it after every `assemble()` call.
 
 **Pass 1** — builds the symbol table (labels → addresses) and calculates instruction sizes.
 **Pass 2** — encodes each instruction to bytes using the symbol table for label resolution.
