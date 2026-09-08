@@ -1,4 +1,4 @@
-# 8086 Emulator
+ي# 8086 Emulator
 
 <https://daohainam.github.io/emulator-8086-js/>
 
